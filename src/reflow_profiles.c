@@ -190,6 +190,10 @@ const char* Reflow_GetProfileName(void) {
 	return profiles[profileidx]->name;
 }
 
+const char* Reflow_GetProfileNameByIdx(int idx) {
+	return idx < NUMPROFILES ? profiles[idx]->name : "INVALID INDEX";
+}
+
 uint16_t Reflow_GetSetpointAtIdx(uint8_t idx) {
 	if (idx > (NUMPROFILETEMPS - 1)) {
 		return 0;
@@ -204,6 +208,12 @@ void Reflow_SetSetpointAtIdx(uint8_t idx, uint16_t value) {
 	uint16_t* temp = (uint16_t*) &profiles[profileidx]->temperatures[idx];
 	if (temp >= (uint16_t*)0x40000000) {
 		*temp = value; // If RAM-based
+	}
+}
+
+void Reflow_SetAllSetpoints(uint16_t *values) {
+	for(uint8_t idx = 0; idx < NUMPROFILETEMPS; idx++) {
+		Reflow_SetSetpointAtIdx(idx, values[idx]);
 	}
 }
 

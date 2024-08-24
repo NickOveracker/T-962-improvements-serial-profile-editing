@@ -29,8 +29,10 @@ int Reflow_GetEEProfileIdx(void);
 int Reflow_SaveEEProfile(void);
 void Reflow_ListProfiles(void);
 const char* Reflow_GetProfileName(void);
+const char* Reflow_GetProfileNameByIdx(int idx);
 uint16_t Reflow_GetSetpointAtIdx(uint8_t idx);
 void Reflow_SetSetpointAtIdx(uint8_t idx, uint16_t value);
+void Reflow_SetAllSetpoints(uint16_t *values);
 void Reflow_DumpProfile(int profile);
 
 #endif /* REFLOW_PROFILES_H */

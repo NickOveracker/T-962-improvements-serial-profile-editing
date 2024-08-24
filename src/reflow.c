@@ -2,6 +2,8 @@
  * reflow.c - Actual reflow profile logic for T-962 reflow controller
  *
  * Copyright (C) 2014 Werner Johansson, wj@unifiedengineering.se
+ * Modified by Nick Overacker on 2024/8/25. nick.overacker@okstate.edu
+ *  - Added a command to update reflow profiles over serial.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by

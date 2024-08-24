@@ -2,6 +2,8 @@
  * main.c - T-962 reflow controller
  *
  * Copyright (C) 2014 Werner Johansson, wj@unifiedengineering.se
+ * Modified by Nick Overacker on 2024/8/25. nick.overacker@okstate.edu
+ *  - Added a command to update reflow profiles over serial.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -62,18 +64,20 @@ static char* format_about = \
 
 static char* help_text = \
 "\nT-962-controller serial interface.\n\n" \
-" about                   Show about + debug information\n" \
-" bake <setpoint>         Enter Bake mode with setpoint\n" \
-" bake <setpoint> <time>  Enter Bake mode with setpoint for <time> seconds\n" \
-" help                    Display help text\n" \
-" list profiles           List available reflow profiles\n" \
-" list settings           List machine settings\n" \
-" quiet                   No logging in standby mode\n" \
-" reflow                  Start reflow with selected profile\n" \
-" setting <id> <value>    Set setting id to value\n" \
-" select profile <id>     Select reflow profile by id\n" \
-" stop                    Exit reflow or bake mode\n" \
-" values                  Dump currently measured values\n" \
+" about                           Show about + debug information\n" \
+" bake <setpoint>                 Enter Bake mode with setpoint\n" \
+" bake <setpoint> <time>          Enter Bake mode with setpoint for <time> seconds\n" \
+" help                            Display help text\n" \
+" list profiles                   List available reflow profiles\n" \
+" list settings                   List machine settings\n" \
+" quiet                           No logging in standby mode\n" \
+" reflow                          Start reflow with selected profile\n" \
+" setting <id> <value>            Set setting id to value\n" \
+" select profile <id>             Select reflow profile by id\n" \
+" stop                            Exit reflow or bake mode\n" \
+" values                          Dump currently measured values\n" \
+" dump profile <id>               Dump reflow profile by id\n" \
+" update <id> <t1> <t2> ... <t48> Overwrite profile CUSTOM #<ID>\n"
 "\n";
 
 static int32_t Main_Work(void);
@@ -158,6 +162,32 @@ typedef enum eMainMode {
 	MAIN_REFLOW
 } MainMode_t;
 
+uint8_t getUpdateCmdParams(char *template, char *cmd, int *pid, uint16_t *vals) {
+	// First, parse the first value (as uint8_t) and the first of the remaining values
+	int num_parsed = sscanf(cmd, "update %d", pid);
+	
+	if (num_parsed != 1) {
+		printf("Error parsing input.\n");
+		return 1; // Return error code if parsing fails
+	}
+
+	// Now, parse the remaining 48 values in a loop
+	const char *remaining_input = cmd + 7;  // Skip "update " part (7 characters)
+
+	for (int i = 0; i < 48; i++) {
+		while (*remaining_input != ' ' && *remaining_input != '\0') remaining_input++;  // Skip to next space
+		if (*remaining_input == ' ') remaining_input++;  // Move past space
+
+		num_parsed = sscanf(remaining_input, "%hu", &vals[i]);
+		if (num_parsed != 1 || vals[i] > 300) {
+			printf("Error parsing input at index %d.\n", i);
+			return 1; // Return error code if parsing fails
+		}
+	}
+
+	return 0; // Return success code
+}
+
 static int32_t Main_Work(void) {
 	static MainMode_t mode = MAIN_HOME;
 	static uint16_t setpoint = 0;
@@ -184,12 +214,26 @@ static int32_t Main_Work(void) {
 	char* cmd_dump_profile = "dump profile %d";
 	char* cmd_setting = "setting %d %f";
 
+	// Add a command for setting an entire profile.
+	// plus 49 integers (for profile ID + temperature settings)
+	#define REPEAT_1(x) x
+	#define REPEAT_2(x) REPEAT_1(x) x
+	#define REPEAT_4(x) REPEAT_2(x) REPEAT_2(x)
+	#define REPEAT_8(x) REPEAT_4(x) REPEAT_4(x)
+	#define REPEAT_16(x) REPEAT_8(x) REPEAT_8(x)
+	#define REPEAT_32(x) REPEAT_16(x) REPEAT_16(x)
+	#define REPEAT_49(x) REPEAT_32(x) REPEAT_16(x) REPEAT_1(x)
+	#define CMD_PREFIX "update "
+	#define REPEATED_FORMAT REPEAT_49("%d")
+	char* cmd_update_profile = CMD_PREFIX REPEATED_FORMAT; // "update %d %d..."
+
 	if (uart_isrxready()) {
 		int len = uart_readline(serial_cmd, 255);
 
 		if (len > 0) {
 			int param, param1;
 			float paramF;
+			uint16_t setpoints[48];
 
 			if (strcmp(serial_cmd, "about") == 0) {
 				printf(format_about, Version_GetGitVersion());
@@ -271,13 +315,18 @@ static int32_t Main_Work(void) {
 				Reflow_SetMode(REFLOW_BAKE);
 
 			} else if (sscanf(serial_cmd, cmd_dump_profile, &param) > 0) {
-				printf("\nDumping profile %d: %s\n ", param, Reflow_GetProfileName());
+				printf("\nDumping profile %d: %s\n ", param, Reflow_GetProfileNameByIdx(param));
 				Reflow_DumpProfile(param);
 
 			} else if (sscanf(serial_cmd, cmd_setting, &param, &paramF) > 0) {
 				Setup_setRealValue(param, paramF);
 				printf("\nAdjusted setting: ");
 				Setup_printFormattedValue(param);
+
+			} else if (getUpdateCmdParams(cmd_update_profile, serial_cmd, &param, setpoints) == 0) {
+				Reflow_SelectEEProfileIdx(param);
+				Reflow_SetAllSetpoints(setpoints);
+				Reflow_SaveEEProfile();
 
 			} else {
 				printf("\nCannot understand command, ? for help\n");
